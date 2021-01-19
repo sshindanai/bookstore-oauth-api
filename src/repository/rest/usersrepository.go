@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	userRestClient = rest.RequestBuilder{
-		BaseURL: "http://localhost:8082",
+	usersRestClient = rest.RequestBuilder{
+		BaseURL: "http://localhost:8080",
 		Timeout: 100 * time.Millisecond,
 	}
 )
@@ -32,18 +32,19 @@ func (r *userRepository) LoginUser(email string, password string) (*models.User,
 		Password: password,
 	}
 
-	response := userRestClient.Post("/users/login", request)
+	response := usersRestClient.Post("/users/login", request)
 	if response == nil || response.Response == nil {
-		return nil, errors.NewUnauthorizedError("invalid restclient response when trying to login user")
+		return nil, errors.NewUnauthorizedError("invalid restclient response when trying to login user (oauth)")
 	}
 
-	// if response.StatusCode > 299 {
-	// 	apiErr, err := rest_errors.NewRestErrorFromBytes(response.Bytes())
-	// 	if err != nil {
-	// 		return nil, rest_errors.NewInternalServerError("invalid error interface when trying to login user", err)
-	// 	}
-	// 	return nil, apiErr
-	// }
+	if response.StatusCode > 299 {
+		var restErr errors.RestErr
+		if err := json.Unmarshal(response.Bytes(), &restErr); err != nil {
+			// Happen when tag "status_code" is string
+			return nil, errors.NewInternalServerError("invalid error interface when trying to login user")
+		}
+		return nil, &restErr
+	}
 
 	var user models.User
 	if err := json.Unmarshal(response.Bytes(), &user); err != nil {

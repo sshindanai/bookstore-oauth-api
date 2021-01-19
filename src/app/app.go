@@ -21,7 +21,8 @@ func StartApp() {
 }
 
 func endpointsRegister(handler http.AccessTokenHandler) {
-	router.GET("/oauth/accesstoken/:accesstokenid", handler.GetById)
+	router.GET("/oauth/accesstoken/:accesstokenid", handler.GetByID)
+	router.GET("/oauth/accesstoken/introspect/:accesstoken", handler.Introspection)
 	router.POST("/oauth/access_token", handler.Create)
 	router.PUT("/oauth/accesstoken/:accesstokenid", handler.Refresh)
 }

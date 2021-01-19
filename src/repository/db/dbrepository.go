@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/clients/redis"
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/models"
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/utils/errors"
@@ -21,49 +22,63 @@ func NewRepository() Repository {
 }
 
 type Repository interface {
-	GetById(string, chan *models.AccessTokenConcurrent)
+	GetByID(string, chan *models.AuthenticateConcurrent)
+	Introspection(string, chan *models.AccessTokenConcurrent)
 	Create(*models.AccessToken, chan *models.AccessTokenConcurrent)
 }
 type dbRepository struct{}
 
-func (db *dbRepository) GetById(id string, output chan *models.AccessTokenConcurrent) {
+func (db *dbRepository) GetByID(id string, output chan *models.AuthenticateConcurrent) {
 	go func() {
-		rdb := redis.NewRedis()
-		token, err := rdb.Get(ctx, id).Result()
+		redisClient := redis.NewRedis()
+		token, err := redisClient.Get(ctx, id).Result()
 		if err != nil || token == "" {
-			output <- &models.AccessTokenConcurrent{
+			output <- &models.AuthenticateConcurrent{
 				Error: errors.ParseError(err),
 			}
 			return
 		}
-
-		userIDStr := rdb.HGet(ctx, token, "user_id").Val()
-		userID, _ := strconv.ParseInt(userIDStr, 10, 64)
-
-		clientIDStr := rdb.HGet(ctx, token, "client_id").Val()
-		clientID, _ := strconv.ParseInt(clientIDStr, 10, 64)
-
-		expStr := rdb.HGet(ctx, token, "expires").Val()
-		exp, _ := strconv.ParseInt(expStr, 10, 64)
-
-		result := &models.AccessToken{
+		res := &models.Authenticate{
 			AccessToken: token,
-			UserID:      userID,
-			ClientID:    clientID,
-			Expires:     exp,
 		}
-		output <- &models.AccessTokenConcurrent{
-			Result: result,
+
+		output <- &models.AuthenticateConcurrent{
+			Result: res,
 		}
 		return
 	}()
 }
 
+func (db *dbRepository) Introspection(at string, output chan *models.AccessTokenConcurrent) {
+	go func() {
+		redisClient := redis.NewRedis()
+		data, err := redisClient.HGetAll(ctx, at).Result()
+		if err != nil || data == nil {
+			output <- &models.AccessTokenConcurrent{
+				Error: errors.NewUnauthorizedError(err.Error()),
+			}
+			return
+		}
+
+		var userInfo models.AccessToken
+		err = mapstructure.WeakDecode(data, &userInfo)
+		if err != nil {
+			output <- &models.AccessTokenConcurrent{
+				Error: errors.NewUnauthorizedError(err.Error()),
+			}
+			return
+		}
+		result := &models.AccessTokenConcurrent{
+			Result: &userInfo,
+		}
+		output <- result
+	}()
+}
+
 func (db *dbRepository) Create(at *models.AccessToken, output chan *models.AccessTokenConcurrent) {
 	go func() {
-		rdb := redis.NewRedis()
-
-		_, err := rdb.SetEX(ctx, strconv.Itoa(int(at.UserID)), at.AccessToken, time.Hour*expirationTime).Result()
+		redisClient := redis.NewRedis()
+		_, err := redisClient.SetEX(ctx, strconv.Itoa(int(at.UserID)), at.AccessToken, time.Hour*expirationTime).Result()
 		if err != nil {
 			output <- &models.AccessTokenConcurrent{
 				Error: errors.NewUnauthorizedError(err.Error()),
@@ -71,7 +86,7 @@ func (db *dbRepository) Create(at *models.AccessToken, output chan *models.Acces
 			return
 		}
 
-		_, err = rdb.HSet(ctx, at.AccessToken, "user_id", at.UserID, "client_id", at.ClientID, "expires", at.Expires).Result()
+		_, err = redisClient.HSet(ctx, at.AccessToken, "UserId", at.UserID, "ClientId", at.ClientID, "Expires", at.Expires).Result()
 		if err != nil {
 			output <- &models.AccessTokenConcurrent{
 				Error: errors.NewUnauthorizedError(err.Error()),

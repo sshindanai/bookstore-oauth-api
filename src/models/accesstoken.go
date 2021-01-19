@@ -4,18 +4,12 @@ import (
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/utils/errors"
 )
 
-const (
-	expirationTime            = 24
-	grantTypePassword         = "password"
-	grantTypeClientCredential = "client_credentials"
-)
-
 type AccessTokenRequest struct {
 	GrantType string `json:"grant_type"`
 	Scope     string `json:"scope"`
 
 	// Used for password grant type
-	Username string `json:"username"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 
 	// Used for client_credentials grant type
@@ -25,6 +19,8 @@ type AccessTokenRequest struct {
 
 type AccessToken struct {
 	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	Scope       string `json:"scope"`
 	UserID      int64  `json:"user_id"`
 	ClientID    int64  `json:"client_id"`
 	Expires     int64  `json:"expires"`
@@ -32,5 +28,14 @@ type AccessToken struct {
 
 type AccessTokenConcurrent struct {
 	Result *AccessToken
+	Error  *errors.RestErr
+}
+
+type Authenticate struct {
+	AccessToken string
+}
+
+type AuthenticateConcurrent struct {
+	Result *Authenticate
 	Error  *errors.RestErr
 }
