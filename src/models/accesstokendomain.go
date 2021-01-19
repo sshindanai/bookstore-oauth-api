@@ -9,6 +9,12 @@ import (
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/utils/errors"
 )
 
+const (
+	expirationTime            = 24
+	grantTypePassword         = "password"
+	grantTypeClientCredential = "client_credentials"
+)
+
 func NewAccessToken(userID int64) AccessToken {
 	return AccessToken{
 		UserID:   userID,
@@ -17,11 +23,15 @@ func NewAccessToken(userID int64) AccessToken {
 	}
 }
 
-func (a *AccessToken) IsExpired() bool {
+func (a *AccessToken) IsExpired() *errors.RestErr {
 	now := time.Now().UTC()
 	expirationTime := time.Unix(a.Expires, 0)
 
-	return now.After(expirationTime)
+	if now.After(expirationTime) {
+		return errors.NewUnauthorizedError("access token is expired")
+	}
+
+	return nil
 }
 
 func (at *AccessToken) Generate() {
@@ -47,9 +57,8 @@ func (at *AccessToken) Validate() *errors.RestErr {
 
 func (at *AccessTokenRequest) Validate() *errors.RestErr {
 	switch at.GrantType {
-	case grantTypePassword:
-		break
-	case grantTypeClientCredential:
+	case grantTypePassword,
+		grantTypeClientCredential:
 		break
 	default:
 		return errors.NewUnauthorizedError("invalid grant_type parameter")

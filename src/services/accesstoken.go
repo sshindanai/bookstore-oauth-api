@@ -1,8 +1,6 @@
 package services
 
 import (
-	"sync"
-
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/models"
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/repository/db"
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/repository/rest"
@@ -10,7 +8,8 @@ import (
 )
 
 type Service interface {
-	GetById(string, chan *models.AccessTokenConcurrent)
+	GetByID(string, chan *models.AuthenticateConcurrent)
+	Introspection(string, chan *models.AccessTokenConcurrent)
 	Create(*models.AccessTokenRequest, chan *models.AccessTokenConcurrent)
 	Refresh(string, chan *models.AccessTokenConcurrent)
 }
@@ -27,8 +26,8 @@ func NewService(restUserRepo rest.RestUsersRepository, repo db.Repository) Servi
 	}
 }
 
-func (s *service) GetById(id string, output chan *models.AccessTokenConcurrent) {
-	go s.repository.GetById(id, output)
+func (s *service) GetByID(id string, output chan *models.AuthenticateConcurrent) {
+	go s.repository.GetByID(id, output)
 }
 
 func (s *service) Create(request *models.AccessTokenRequest, output chan *models.AccessTokenConcurrent) {
@@ -40,24 +39,10 @@ func (s *service) Create(request *models.AccessTokenRequest, output chan *models
 		return
 	}
 
-	// TODO: Support both grant types
-	// user, err := s.restUserRepo.LoginUser(request.Username, request.Password)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	// TODO: Support both grant types: client_credentials and password
+	// Authenticate the user against the Users API:
 
-	// Mock login
-	var wg sync.WaitGroup
-	wg.Add(1)
-	user, err := func(email string, password string) (*models.User, *errors.RestErr) {
-		wg.Done()
-		return &models.User{
-			Id:        123,
-			FirstName: "Shindanai",
-			LastName:  "Mongkolsin",
-			Email:     "sshindanai.m@gmail.com",
-		}, nil
-	}(request.Username, request.Password)
+	user, err := s.restUserRepo.LoginUser(request.Email, request.Password)
 	if err != nil {
 		res := &models.AccessTokenConcurrent{
 			Error: err,
@@ -65,9 +50,8 @@ func (s *service) Create(request *models.AccessTokenRequest, output chan *models
 		output <- res
 		return
 	}
-	wg.Wait()
 
-	// generate new access token
+	// generate a new access token
 	at := models.NewAccessToken(user.Id)
 	at.Generate()
 
@@ -75,22 +59,26 @@ func (s *service) Create(request *models.AccessTokenRequest, output chan *models
 	go s.repository.Create(&at, output)
 }
 
-func (s *service) Refresh(userID string, output chan *models.AccessTokenConcurrent) {
-	userCh := make(chan *models.AccessTokenConcurrent)
-	go s.repository.GetById(userID, userCh)
-	user := <-userCh
-
-	if user.Error != nil {
+func (s *service) Introspection(at string, output chan *models.AccessTokenConcurrent) {
+	if at == "" {
 		res := &models.AccessTokenConcurrent{
-			Error: user.Error,
+			Error: errors.NewUnauthorizedError("invalid access token"),
 		}
 		output <- res
 		return
 	}
 
-	if user.Result.IsExpired() {
+	go s.repository.Introspection(at, output)
+}
+
+func (s *service) Refresh(token string, output chan *models.AccessTokenConcurrent) {
+	userCh := make(chan *models.AccessTokenConcurrent)
+	go s.repository.Introspection(token, userCh)
+	user := <-userCh
+
+	if user.Error != nil {
 		res := &models.AccessTokenConcurrent{
-			Error: errors.NewUnauthorizedError("token is already expired"),
+			Error: errors.NewUnauthorizedError("access token has expired already"),
 		}
 		output <- res
 		return

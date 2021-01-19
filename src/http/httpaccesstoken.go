@@ -10,7 +10,8 @@ import (
 )
 
 type AccessTokenHandler interface {
-	GetById(echo.Context) error
+	GetByID(echo.Context) error
+	Introspection(echo.Context) error
 	Create(echo.Context) error
 	Refresh(echo.Context) error
 }
@@ -25,12 +26,26 @@ func NewHandler(service services.Service) AccessTokenHandler {
 	}
 }
 
-func (handler *accessTokenHandler) GetById(c echo.Context) error {
-	accessTokenID := c.Param("accesstokenid")
+func (handler *accessTokenHandler) GetByID(c echo.Context) error {
+	id := c.Param("accesstokenid")
 
+	output := make(chan *models.AuthenticateConcurrent)
+
+	go handler.service.GetByID(id, output)
+	res := <-output
+
+	if res.Error != nil {
+		return c.JSON(res.Error.Code, res.Error)
+	}
+
+	return c.JSON(http.StatusOK, res.Result)
+}
+
+func (handler *accessTokenHandler) Introspection(c echo.Context) error {
+	at := c.Param("accesstoken")
 	output := make(chan *models.AccessTokenConcurrent)
 
-	go handler.service.GetById(accessTokenID, output)
+	go handler.service.Introspection(at, output)
 	res := <-output
 
 	if res.Error != nil {
@@ -66,6 +81,5 @@ func (handler *accessTokenHandler) Refresh(c echo.Context) error {
 	if res.Error != nil {
 		return c.JSON(res.Error.Code, res.Error)
 	}
-
 	return c.JSON(http.StatusOK, res.Result)
 }
