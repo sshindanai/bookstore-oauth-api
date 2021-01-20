@@ -34,7 +34,7 @@ func (db *dbRepository) GetByID(id string, output chan *models.AuthenticateConcu
 		token, err := redisClient.Get(ctx, id).Result()
 		if err != nil || token == "" {
 			output <- &models.AuthenticateConcurrent{
-				Error: errors.ParseError(err),
+				Error: errors.ParseError(err, id),
 			}
 			return
 		}
