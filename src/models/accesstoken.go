@@ -1,8 +1,6 @@
 package models
 
-import (
-	"github.com/sshindanai/repo/bookstore-oauth-api/src/utils/errors"
-)
+import "github.com/sshindanai/bookstore-utils-go/resterrors"
 
 type AccessTokenRequest struct {
 	GrantType string `json:"grant_type"`
@@ -28,14 +26,22 @@ type AccessToken struct {
 
 type AccessTokenConcurrent struct {
 	Result *AccessToken
-	Error  *errors.RestErr
+	Error  *resterrors.RestErr
+}
+
+type AuthenticateRequest struct {
+	UserID string `json:"user_id"`
+}
+
+type IntrospectRequest struct {
+	AccessToken string `json:"access_token"`
 }
 
 type Authenticate struct {
-	AccessToken string
+	AccessToken string `json:"access_token"`
 }
 
 type AuthenticateConcurrent struct {
 	Result *Authenticate
-	Error  *errors.RestErr
+	Error  *resterrors.RestErr
 }
