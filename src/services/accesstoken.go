@@ -1,17 +1,19 @@
 package services
 
 import (
+	"sync"
+
+	"github.com/sshindanai/bookstore-utils-go/resterrors"
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/models"
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/repository/db"
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/repository/rest"
-	"github.com/sshindanai/repo/bookstore-oauth-api/src/utils/errors"
 )
 
 type Service interface {
-	GetByID(string, chan *models.AuthenticateConcurrent)
-	Introspection(string, chan *models.AccessTokenConcurrent)
+	GetAccessTokenByUserID(*models.AuthenticateRequest, chan *models.AuthenticateConcurrent)
+	Introspection(*models.IntrospectRequest, chan *models.AccessTokenConcurrent)
 	Create(*models.AccessTokenRequest, chan *models.AccessTokenConcurrent)
-	Refresh(string, chan *models.AccessTokenConcurrent)
+	Refresh(*models.IntrospectRequest, chan *models.AccessTokenConcurrent)
 }
 
 type service struct {
@@ -26,8 +28,16 @@ func NewService(restUserRepo rest.RestUsersRepository, repo db.Repository) Servi
 	}
 }
 
-func (s *service) GetByID(id string, output chan *models.AuthenticateConcurrent) {
-	go s.repository.GetByID(id, output)
+func (s *service) GetAccessTokenByUserID(req *models.AuthenticateRequest, output chan *models.AuthenticateConcurrent) {
+	if err := req.Validate(); err != nil {
+		res := &models.AuthenticateConcurrent{
+			Error: err,
+		}
+		output <- res
+		return
+	}
+
+	go s.repository.GetAccessTokenByUserID(req, output)
 }
 
 func (s *service) Create(request *models.AccessTokenRequest, output chan *models.AccessTokenConcurrent) {
@@ -59,10 +69,10 @@ func (s *service) Create(request *models.AccessTokenRequest, output chan *models
 	go s.repository.Create(&at, output)
 }
 
-func (s *service) Introspection(at string, output chan *models.AccessTokenConcurrent) {
-	if at == "" {
+func (s *service) Introspection(at *models.IntrospectRequest, output chan *models.AccessTokenConcurrent) {
+	if at.AccessToken == "" {
 		res := &models.AccessTokenConcurrent{
-			Error: errors.NewUnauthorizedError("invalid access token"),
+			Error: resterrors.NewUnauthorizedError("invalid access token"),
 		}
 		output <- res
 		return
@@ -71,14 +81,29 @@ func (s *service) Introspection(at string, output chan *models.AccessTokenConcur
 	go s.repository.Introspection(at, output)
 }
 
-func (s *service) Refresh(token string, output chan *models.AccessTokenConcurrent) {
+func (s *service) Refresh(req *models.IntrospectRequest, output chan *models.AccessTokenConcurrent) {
 	userCh := make(chan *models.AccessTokenConcurrent)
-	go s.repository.Introspection(token, userCh)
+	go s.repository.Introspection(req, userCh)
 	user := <-userCh
 
 	if user.Error != nil {
 		res := &models.AccessTokenConcurrent{
-			Error: errors.NewUnauthorizedError("access token has expired already"),
+			Error: user.Error,
+		}
+		output <- res
+		return
+	}
+	var wg sync.WaitGroup
+	var err *resterrors.RestErr
+	wg.Add(1)
+	go func() {
+		err = s.repository.DeleteKey(req.AccessToken)
+		wg.Done()
+	}()
+	wg.Wait()
+	if err != nil {
+		res := &models.AccessTokenConcurrent{
+			Error: err,
 		}
 		output <- res
 		return

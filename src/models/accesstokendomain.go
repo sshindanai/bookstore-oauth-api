@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sshindanai/bookstore-utils-go/resterrors"
 	"github.com/sshindanai/repo/bookstore-oauth-api/src/utils/cryptoutils"
-	"github.com/sshindanai/repo/bookstore-oauth-api/src/utils/errors"
 )
 
 const (
@@ -23,12 +23,12 @@ func NewAccessToken(userID int64) AccessToken {
 	}
 }
 
-func (a *AccessToken) IsExpired() *errors.RestErr {
+func (a *AccessToken) IsExpired() *resterrors.RestErr {
 	now := time.Now().UTC()
 	expirationTime := time.Unix(a.Expires, 0)
 
 	if now.After(expirationTime) {
-		return errors.NewUnauthorizedError("access token is expired")
+		return resterrors.NewUnauthorizedError("access token is expired")
 	}
 
 	return nil
@@ -38,31 +38,39 @@ func (at *AccessToken) Generate() {
 	at.AccessToken = cryptoutils.GetSHA256(fmt.Sprintf("at-%d-%d-ran", at.UserID, at.Expires))
 }
 
-func (at *AccessToken) Validate() *errors.RestErr {
+func (at *AccessToken) Validate() *resterrors.RestErr {
 	at.AccessToken = strings.TrimSpace(at.AccessToken)
 	if at.AccessToken == "" {
-		return errors.NewBadRequestError("invalid access token id")
+		return resterrors.NewBadRequestError("invalid access token id")
 	}
 	if at.UserID <= 0 {
-		return errors.NewBadRequestError("invalid user id")
+		return resterrors.NewBadRequestError("invalid user id")
 	}
 	if at.ClientID <= 0 {
-		return errors.NewBadRequestError("invalid client id")
+		return resterrors.NewBadRequestError("invalid client id")
 	}
 	if at.Expires <= 0 {
-		return errors.NewBadRequestError("invalid expiration time")
+		return resterrors.NewBadRequestError("invalid expiration time")
 	}
 	return nil
 }
 
-func (at *AccessTokenRequest) Validate() *errors.RestErr {
+func (at *AccessTokenRequest) Validate() *resterrors.RestErr {
 	switch at.GrantType {
 	case grantTypePassword,
 		grantTypeClientCredential:
 		break
 	default:
-		return errors.NewUnauthorizedError("invalid grant_type parameter")
+		return resterrors.NewUnauthorizedError("invalid grant_type parameter")
 	}
 
+	return nil
+}
+
+func (t *AuthenticateRequest) Validate() *resterrors.RestErr {
+	t.UserID = strings.TrimSpace(t.UserID)
+	if t.UserID <= "" {
+		return resterrors.NewBadRequestError("invalid user id")
+	}
 	return nil
 }
